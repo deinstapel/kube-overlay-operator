@@ -1,0 +1,48 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks/status
+  verbs:
+  - get
+  - patch
+  - update
