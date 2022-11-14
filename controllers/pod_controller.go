@@ -203,7 +203,7 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork
 		// Pod is no router, so remove from list
 		oldLen := len(nw.Status.Routers)
 		nw.Status.Routers = lo.Filter(nw.Status.Routers, func(n nwApi.OverlayNetworkIPAllocation, i int) bool { return n.PodName != pod.Name })
-		changes = len(nw.Status.Routers) != oldLen
+		changes = changes || len(nw.Status.Routers) != oldLen
 	}
 
 	// Only update the network if it got changed

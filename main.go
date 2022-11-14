@@ -33,6 +33,7 @@ import (
 
 	networkv1alpha1 "github.com/deinstapel/kube-overlay-operator/api/v1alpha1"
 	"github.com/deinstapel/kube-overlay-operator/controllers"
+	"github.com/deinstapel/kube-overlay-operator/tunneler"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -49,14 +50,22 @@ func init() {
 }
 
 func main() {
+	isOperator := true
+	if mode, ok := os.LookupEnv("RUN_MODE"); ok && mode == "SIDECAR" {
+		isOperator = false
+	}
+
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+	if isOperator {
+		flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+			"Enable leader election for controller manager. "+
+				"Enabling this will ensure there is only one active controller manager.")
+	}
+
 	opts := zap.Options{
 		Development: true,
 	}
@@ -89,20 +98,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.OverlayNetworkReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OverlayNetwork")
-		os.Exit(1)
-	}
+	if isOperator {
+		// Pod started in operator mode
+		if err = (&controllers.OverlayNetworkReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "OverlayNetwork")
+			os.Exit(1)
+		}
 
-	if err := (&controllers.PodReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Pod")
-		os.Exit(1)
+		if err := (&controllers.PodReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "Pod")
+			os.Exit(1)
+		}
+	} else {
+		// Pod started in sidecar mode
+		if err := (&tunneler.TunnelReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "OverlayTunneler")
+			os.Exit(1)
+		}
 	}
 	//+kubebuilder:scaffold:builder
 

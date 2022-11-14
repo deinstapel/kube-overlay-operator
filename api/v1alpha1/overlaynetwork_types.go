@@ -28,6 +28,9 @@ type OverlayNetworkSpec struct {
 	// AllocatableCIDR is the cidr where member and router pods get their IP addresses allocated from
 	AllocatableCIDR string `json:"allocatableCIDR,omitempty"`
 
+	// Port is the UDP port where the allocation is created
+	Port int `json:"port,omitempty"`
+
 	// RoutableCIDRs is the list of cidrs that is reachable through the router pods of this network
 	RoutableCIDRs []string `json:"routableCIDRs,omitempty"`
 }

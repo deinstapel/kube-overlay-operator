@@ -18,7 +18,7 @@ func FirstFreeHost(cidr string, allocated map[string]bool) (string, error) {
 	// Leftovers from ancient times
 	inc(ip)
 
-	for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); inc(ip) {
+	for ; ipnet.Contains(ip); inc(ip) {
 		if allocated[ip.String()] {
 			continue
 		}
