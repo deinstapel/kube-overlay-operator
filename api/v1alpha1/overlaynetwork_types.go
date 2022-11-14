@@ -37,7 +37,8 @@ type OverlayNetworkStatus struct {
 	// Allocations contains all IP addresses that have been handed out to pods from this network
 	Allocations []OverlayNetworkIPAllocation `json:"allocations,omitempty"`
 
-	Routers []OverlayNetworkRouter `json:"routers,omitempty"`
+	// Routers contains all IP addresses that act as routers for this network
+	Routers []OverlayNetworkIPAllocation `json:"routers,omitempty"`
 }
 
 // OverlayNetworkIPAllocation contains information on a single IP address and to which pod it belongs
@@ -45,11 +46,6 @@ type OverlayNetworkIPAllocation struct {
 	PodName string `json:"podName,omitempty"`
 	PodIP   string `json:"podIP,omitempty"`
 	IP      string `json:"ip,omitempty"`
-}
-
-// OverlayNetworkRouter contains information regarding the routers in the network.
-type OverlayNetworkRouter struct {
-	PodName string `json:"podName,omitempty"`
 }
 
 //+kubebuilder:object:root=true

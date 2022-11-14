@@ -23,7 +23,7 @@ import (
 
 	goerrors "errors"
 
-	networkv1alpha1 "github.com/deinstapel/kube-overlay-operator/api/v1alpha1"
+	nwApi "github.com/deinstapel/kube-overlay-operator/api/v1alpha1"
 	"github.com/deinstapel/kube-overlay-operator/controllers/iputil"
 	lo "github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
@@ -50,13 +50,6 @@ type PodReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the OverlayNetwork object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
 func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	pod := &corev1.Pod{}
@@ -68,15 +61,16 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	memberNetworks := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_MEMBER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
-	routerNetworks := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_ROUTER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
+	memberNetworksList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_MEMBER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
+	routerNetworksList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_ROUTER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
 
-	allNetworkList := lo.Uniq(append(memberNetworks, routerNetworks...))
+	allNetworkList := lo.Uniq(append(memberNetworksList, routerNetworksList...))
 
 	uniqueNetworks := lo.SliceToMap(lo.Uniq(allNetworkList), func(nw string) (string, bool) { return nw, false })
+	routerNetworks := lo.SliceToMap(lo.Uniq(routerNetworksList), func(nw string) (string, bool) { return nw, false })
 
 	// TODO: Caching? dunno
-	nwList := &networkv1alpha1.OverlayNetworkList{}
+	nwList := &nwApi.OverlayNetworkList{}
 	if err := r.List(ctx, nwList, client.InNamespace(pod.Namespace)); err != nil {
 		logger.Error(err, "failed to list networks")
 		return ctrl.Result{}, err
@@ -90,8 +84,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			// pod.DeletionTimestamp != nil means it was deleted
 			// phase != Running && phase != Unknown means it's either pending or succeeded or failed, which means all containers
 			// have exited, so we can safely free all IPs used by the pod
-			uniqueNetworks = nil
-			routerNetworks = nil
+			uniqueNetworks = make(map[string]bool)
+			routerNetworks = make(map[string]bool)
 			shouldRemoveFinalizer = true
 		}
 	} else {
@@ -104,19 +98,18 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	for i := range nwList.Items {
-
-		// TODO: process router info.
-
 		nw := &nwList.Items[i]
+
+		_, isRouter := routerNetworks[nw.Name]
 		if _, ok := uniqueNetworks[nw.Name]; ok {
-			if err := r.allocateIP(ctx, nw, pod); err != nil {
+			if err := r.allocateIP(ctx, nw, pod, isRouter); err != nil {
 				logger.Error(err, "error allocating ip", "network", nw.Name)
 				hasErrors = true
 			} else {
 				uniqueNetworks[nw.Name] = true
 			}
 		} else {
-			if err := r.deallocateIP(ctx, nw, pod); err != nil {
+			if err := r.deallocateIP(ctx, nw, pod, isRouter); err != nil {
 				logger.Error(err, "error deallocating ip", "network", nw.Name)
 				hasErrors = true
 			}
@@ -151,67 +144,96 @@ func (r *PodReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *PodReconciler) allocateIP(ctx context.Context, nw *networkv1alpha1.OverlayNetwork, pod *corev1.Pod) error {
+func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork, pod *corev1.Pod, isRouter bool) error {
+	changes := false
 	if pod.Status.PodIP == "" {
 		return goerrors.New("refusing assigning overlay IP to pod without primary IP")
 	}
 	logger := log.FromContext(ctx)
-	if _, found := lo.Find(nw.Status.Allocations, func(item networkv1alpha1.OverlayNetworkIPAllocation) bool {
+	var allocation nwApi.OverlayNetworkIPAllocation
+	if allocFromList, found := lo.Find(nw.Status.Allocations, func(item nwApi.OverlayNetworkIPAllocation) bool {
 		return pod.Name == item.PodName
-	}); found {
-		// The pod has a valid IP allocation in this network
-		return nil
-	}
+	}); !found {
+		// The pod has no valid IP allocation in this network, so create one
 
-	// Don't allocate new IPs to deleting network
-	if nw.DeletionTimestamp != nil {
-		err := goerrors.New("refusing to allocate new IP to deleting network")
-		logger.Error(err, "network deleting", "network", nw.Name)
-		return err
-	}
-
-	// Build a map of allocations for faster checks
-	allocationMap := make(map[string]bool)
-	for _, alloc := range nw.Status.Allocations {
-		allocationMap[alloc.IP] = true
-	}
-
-	// Retrieve IP address, handle pool exhausted errors
-	allocation, err := iputil.FirstFreeHost(nw.Spec.AllocatableCIDR, allocationMap)
-	if err != nil && err != iputil.ErrAddressPoolExhausted {
-		logger.Error(err, "invalid CIDR for overlay network", "network", nw.Name)
-		return err
-	} else if err == iputil.ErrAddressPoolExhausted {
-		logger.Error(err, "network address pool exhaused", "network", nw.Name)
-		return err
-	}
-
-	// Update the allocations in the Network.Status resource
-	nw.Status.Allocations = append(nw.Status.Allocations, networkv1alpha1.OverlayNetworkIPAllocation{
-		PodName: pod.Name,
-		IP:      allocation,
-		PodIP:   pod.Status.PodIP,
-	})
-	if err = r.Status().Update(ctx, nw); err != nil {
-		if !errors.IsNotFound(err) {
-			logger.Error(err, "could not update network status", "network", nw.Name)
+		// Don't allocate new IPs to deleting network
+		if nw.DeletionTimestamp != nil {
+			err := goerrors.New("refusing to allocate new IP to deleting network")
+			logger.Error(err, "network deleting", "network", nw.Name)
 			return err
 		}
+
+		// Build a map of allocations for faster checks
+		allocationMap := make(map[string]bool)
+		for _, alloc := range nw.Status.Allocations {
+			allocationMap[alloc.IP] = true
+		}
+
+		// Retrieve IP address, handle pool exhausted errors
+		ipAlloc, err := iputil.FirstFreeHost(nw.Spec.AllocatableCIDR, allocationMap)
+		if err != nil && err != iputil.ErrAddressPoolExhausted {
+			logger.Error(err, "invalid CIDR for overlay network", "network", nw.Name)
+			return err
+		} else if err == iputil.ErrAddressPoolExhausted {
+			logger.Error(err, "network address pool exhaused", "network", nw.Name)
+			return err
+		}
+
+		allocation = nwApi.OverlayNetworkIPAllocation{
+			PodName: pod.Name,
+			IP:      ipAlloc,
+			PodIP:   pod.Status.PodIP,
+		}
+		// Update the allocations in the Network.Status resource
+		nw.Status.Allocations = append(nw.Status.Allocations, allocation)
+		changes = true
+	} else {
+		// pod has existing allocation, reuse for router processing
+		allocation = allocFromList
 	}
+
+	// Check if the pod we're processing acts as a router, if so also populate network.Routers
+	if isRouter {
+		// Pod is a router, ensure it's in the list
+		if !lo.ContainsBy(nw.Status.Routers, func(n nwApi.OverlayNetworkIPAllocation) bool { return n.PodName == pod.Name }) {
+			nw.Status.Routers = append(nw.Status.Routers, allocation)
+			changes = true
+		}
+	} else {
+		// Pod is no router, so remove from list
+		oldLen := len(nw.Status.Routers)
+		nw.Status.Routers = lo.Filter(nw.Status.Routers, func(n nwApi.OverlayNetworkIPAllocation, i int) bool { return n.PodName != pod.Name })
+		changes = len(nw.Status.Routers) != oldLen
+	}
+
+	// Only update the network if it got changed
+	if changes {
+		if err := r.Status().Update(ctx, nw); err != nil {
+			if !errors.IsNotFound(err) {
+				logger.Error(err, "could not update network status", "network", nw.Name)
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
 // handlePodDeletion manages pod or annotation key deletions
-func (r *PodReconciler) deallocateIP(ctx context.Context, nw *networkv1alpha1.OverlayNetwork, pod *corev1.Pod) error {
+func (r *PodReconciler) deallocateIP(ctx context.Context, nw *nwApi.OverlayNetwork, pod *corev1.Pod, isRouter bool) error {
 	logger := log.FromContext(ctx)
 
 	nrAllocsBefore := len(nw.Status.Allocations)
-	nw.Status.Allocations = lo.Filter(nw.Status.Allocations, func(item networkv1alpha1.OverlayNetworkIPAllocation, index int) bool {
+	nrRoutersBefore := len(nw.Status.Routers)
+	nw.Status.Allocations = lo.Filter(nw.Status.Allocations, func(item nwApi.OverlayNetworkIPAllocation, index int) bool {
+		return item.PodName != pod.Name
+	})
+	nw.Status.Routers = lo.Filter(nw.Status.Routers, func(item nwApi.OverlayNetworkIPAllocation, index int) bool {
 		return item.PodName != pod.Name
 	})
 
 	// new allocs is less than before, so we deleted something
-	if len(nw.Status.Allocations) != nrAllocsBefore {
+	if len(nw.Status.Allocations) != nrAllocsBefore || len(nw.Status.Routers) != nrRoutersBefore {
 		if err := r.Status().Update(ctx, nw); err != nil {
 			if !errors.IsNotFound(err) {
 				logger.Error(err, "could not update network status", "network", nw.Name)
