@@ -58,6 +58,23 @@ spec:
                   properties:
                     ip:
                       type: string
+                    podIP:
+                      type: string
+                    podName:
+                      type: string
+                  type: object
+                type: array
+              routers:
+                description: Routers contains all IP addresses that act as routers
+                  for this network
+                items:
+                  description: OverlayNetworkIPAllocation contains information on
+                    a single IP address and to which pod it belongs
+                  properties:
+                    ip:
+                      type: string
+                    podIP:
+                      type: string
                     podName:
                       type: string
                   type: object

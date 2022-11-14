@@ -1,5 +1,7 @@
 # kube-overlay-operator
-// TODO(user): Add simple overview of use/purpose
+
+This operator can create and manage simple overlay networks e.g. to connect to Pods via VPN or similar use cases.
+Networks are namespaced and can reuse the same CIDR.
 
 ## Description
 // TODO(user): An in-depth paragraph about your project and overview of use
