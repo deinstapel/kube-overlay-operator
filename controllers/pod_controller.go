@@ -68,10 +68,10 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	memberNetworks := pod.Annotations[POD_NETWORK_MEMBER_ANNOTATION]
-	routerNetworks := pod.Annotations[POD_NETWORK_ROUTER_ANNOTATION]
-	memberNetworkList := strings.Split(memberNetworks, ",")
-	allNetworkList := lo.Uniq(lo.Filter(append(memberNetworkList, strings.Split(routerNetworks, ",")...), func(s string, index int) bool { return s != "" }))
+	memberNetworks := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_MEMBER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
+	routerNetworks := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_ROUTER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
+
+	allNetworkList := lo.Uniq(append(memberNetworks, routerNetworks...))
 
 	uniqueNetworks := lo.SliceToMap(lo.Uniq(allNetworkList), func(nw string) (string, bool) { return nw, false })
 
@@ -91,6 +91,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			// phase != Running && phase != Unknown means it's either pending or succeeded or failed, which means all containers
 			// have exited, so we can safely free all IPs used by the pod
 			uniqueNetworks = nil
+			routerNetworks = nil
 			shouldRemoveFinalizer = true
 		}
 	} else {
@@ -103,6 +104,9 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	for i := range nwList.Items {
+
+		// TODO: process router info.
+
 		nw := &nwList.Items[i]
 		if _, ok := uniqueNetworks[nw.Name]; ok {
 			if err := r.allocateIP(ctx, nw, pod); err != nil {
@@ -148,6 +152,9 @@ func (r *PodReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *PodReconciler) allocateIP(ctx context.Context, nw *networkv1alpha1.OverlayNetwork, pod *corev1.Pod) error {
+	if pod.Status.PodIP == "" {
+		return goerrors.New("refusing assigning overlay IP to pod without primary IP")
+	}
 	logger := log.FromContext(ctx)
 	if _, found := lo.Find(nw.Status.Allocations, func(item networkv1alpha1.OverlayNetworkIPAllocation) bool {
 		return pod.Name == item.PodName
@@ -183,6 +190,7 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *networkv1alpha1.Over
 	nw.Status.Allocations = append(nw.Status.Allocations, networkv1alpha1.OverlayNetworkIPAllocation{
 		PodName: pod.Name,
 		IP:      allocation,
+		PodIP:   pod.Status.PodIP,
 	})
 	if err = r.Status().Update(ctx, nw); err != nil {
 		if !errors.IsNotFound(err) {
