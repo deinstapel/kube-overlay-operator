@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/deinstapel/kube-overlay-operator/controllers"
 	"github.com/samber/lo"
@@ -59,11 +60,10 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 
 	pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{
 		Name:  "overlaysidecar",
-		Image: "", // should be equal to the local pod image
+		Image: os.Getenv("SIDECAR_IMAGE"), // should be equal to the local pod image
 		Env: []corev1.EnvVar{
 			{Name: "RUN_MODE", Value: "SIDECAR"},
 			{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
-			{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
 		},
 		SecurityContext: &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{

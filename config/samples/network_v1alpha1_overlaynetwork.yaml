@@ -9,4 +9,11 @@ metadata:
     app.kubernetes.io/created-by: kube-overlay-operator
   name: overlaynetwork-sample
 spec:
-  # TODO(user): Add fields here
+  # UDP port for the network to go
+  port: 5555
+  # Network CIDR to allocate pod IPs from
+  allocatableCIDR: 10.10.10.0/24
+  # List of CIDRs that are reachable via the "router" Pods
+  routableCIDRs:
+  - 10.10.0.0/16
+  - 192.168.2.1/0
