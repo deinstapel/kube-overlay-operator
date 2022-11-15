@@ -138,6 +138,7 @@ func main() {
 
 		setupLog.Info("registering webhooks to the webhook server")
 		hookServer.Register("/mutate-v1-pod", &webhook.Admission{Handler: &webhooks.PodInjector{Client: mgr.GetClient()}})
+		hookServer.Register("/validate-v1alpha1-overlaynetwork", &webhook.Admission{Handler: &webhooks.PodInjector{Client: mgr.GetClient()}})
 	} else {
 		k, err := kmod.New(
 			kmod.SetInitFunc(modInitFunc),

@@ -17,16 +17,18 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 kubectl apply -f config/samples/
 ```
 
-2. Build and push your image to the location specified by `IMG`:
+2. Build and push your image to the location specified by `IMG` and `IMG_TAG`:
 	
 ```sh
-make docker-build docker-push IMG=<some-registry>/kube-overlay-operator:tag
+make docker-build-manager docker-build-sidecar docker-push-manager docker-push-sidecar IMG=<some-registry>/kube-overlay-operator IMG_TAG=tag
 ```
+
+The resulting images will be `${IMG}/manager:${IMG_TAG}` and `${IMG}/sidecar:${IMG_TAG}`
 	
-3. Deploy the controller to the cluster with the image specified by `IMG`:
+3. Deploy the controller to the cluster with the image specified by `IMG` and `IMG_TAG`:
 
 ```sh
-make deploy IMG=<some-registry>/kube-overlay-operator:tag
+make deploy IMG=<some-registry>/kube-overlay-operator IMG_TAG=tag
 ```
 
 ### Uninstall CRDs
