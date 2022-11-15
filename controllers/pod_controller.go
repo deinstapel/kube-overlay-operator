@@ -38,6 +38,7 @@ import (
 const POD_NETWORK_MEMBER_ANNOTATION = "network.deinstapel.de/member-of"
 const POD_NETWORK_ROUTER_ANNOTATION = "network.deinstapel.de/router-for"
 const POD_FINALIZER = "network.deinstapel.de/ipam"
+const POD_OVERLAY_LABEL = "network.deinstapel.de/inject-sidecar"
 
 // PodReconciler reconciles a Pod object that is part of an OverlayNetwork
 type PodReconciler struct {
@@ -59,6 +60,11 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	if v, ok := pod.Labels[POD_OVERLAY_LABEL]; !ok || v != "true" {
+		// skip reconcilation early
+		return ctrl.Result{}, nil
 	}
 
 	memberNetworksList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_MEMBER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
@@ -87,13 +93,6 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			uniqueNetworks = make(map[string]bool)
 			routerNetworks = make(map[string]bool)
 			shouldRemoveFinalizer = true
-		}
-	} else {
-		// 1. ensure the finalizer is added properly
-		if controllerutil.AddFinalizer(pod, POD_FINALIZER) {
-			if err := r.Update(ctx, pod); err != nil {
-				return ctrl.Result{}, err
-			}
 		}
 	}
 
