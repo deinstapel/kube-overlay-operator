@@ -111,7 +111,10 @@ func (r *TunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	logger.Info("Reconciled network space", "ls", targetLinkState)
 	err := r.reconcileTunnelInterfaces(nw, targetLinkState, isRouter)
-	return ctrl.Result{}, err
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile network: %v", err)
+	}
+	return ctrl.Result{}, nil
 }
 
 func (r *TunnelReconciler) getNetworkId(nw *nwApi.OverlayNetwork) rune {
@@ -130,7 +133,7 @@ func (r *TunnelReconciler) getTunnelId(nw *nwApi.OverlayNetwork, pod *nwApi.Over
 	xh := fnv.New64()
 	xh.Write([]byte(pod.PodName))
 	encoded := string(base58.FlickrEncoding.EncodeUint64(xh.Sum64()))
-	return fmt.Sprintf("ov-%c-%s", networkIndex, encoded)
+	return fmt.Sprintf("o%c_%s", networkIndex, encoded)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -151,17 +154,17 @@ func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, t
 
 	// Ensure the receiving side is setup properly
 	if err := r.reconcileFOU(nw, len(targetState) > 0); err != nil {
-		return err
+		return fmt.Errorf("error setting up fou receive side: %v", err)
 	}
 
 	// Get all network links
 	links, err := netlink.LinkList()
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting existing netlinks: %v", err)
 	}
 	// Check the links we currently have, if there are some that need change or deletion
 	localNet := r.getNetworkId(nw)
-	prefix := fmt.Sprintf("ov-%c-", localNet)
+	prefix := fmt.Sprintf("o%c_", localNet)
 	for i := range links {
 
 		// Get link attributes
@@ -182,7 +185,7 @@ func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, t
 			// Link does not exist in target state, remove from state
 			// This also removes all routes populated for the link
 			if err := netlink.LinkDel(link); err != nil {
-				return err
+				return fmt.Errorf("error deleting existing link %v: %v", attrs.Name, err)
 			}
 		}
 	}
@@ -193,13 +196,15 @@ func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, t
 		}
 		// This link does not yet exist, so set it up.
 		if err := r.setupTunnelIface(nw, linkName, linkInfo, isRouter); err != nil {
-			return err
+			return fmt.Errorf("error setting up new tunnel interface %v: %v", linkName, err)
 		}
 	}
 
 	// at this point all links exist, and the allocatable-cidr-routes are setup properly.
 	if !isRouter {
-		return r.reconcileRoutesMember(nw, targetState)
+		if err := r.reconcileRoutesMember(nw, targetState); err != nil {
+			return fmt.Errorf("error setting up routes for network member: %v", err)
+		}
 	}
 
 	return nil
@@ -268,19 +273,23 @@ func (r *TunnelReconciler) setupTunnelIface(nw *nwApi.OverlayNetwork, linkName s
 func (r *TunnelReconciler) reconcileFOU(nw *nwApi.OverlayNetwork, shouldBePresent bool) error {
 	fouList, err := netlink.FouList(netlink.FAMILY_V4)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list fou: %v", err)
 	}
 	fouLink, fouIsPresent := lo.Find(fouList, func(f netlink.Fou) bool { return f.Port == nw.Spec.Port })
 	if fouIsPresent && !shouldBePresent {
-		return netlink.FouDel(fouLink)
+		if err := netlink.FouDel(fouLink); err != nil {
+			return fmt.Errorf("failed to delete fou link: %v", err)
+		}
 	}
 	if shouldBePresent && !fouIsPresent {
-		return netlink.FouAdd(netlink.Fou{
+		if err := netlink.FouAdd(netlink.Fou{
 			Family:    netlink.FAMILY_V4,
 			Port:      nw.Spec.Port,
 			Protocol:  4, // IPIP
 			EncapType: netlink.FOU_ENCAP_DIRECT,
-		})
+		}); err != nil {
+			return fmt.Errorf("failed to create fou link: %v", err)
+		}
 	}
 	return nil
 }
@@ -297,7 +306,7 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 		if err != nil {
 			return err
 		}
-		allowedCidrs := lo.FilterMap(append(nw.Spec.RoutableCIDRs, nw.Spec.AllocatableCIDR), func(e string, i int) (*net.IPNet, bool) {
+		allowedCidrs := lo.FilterMap(nw.Spec.RoutableCIDRs, func(e string, i int) (*net.IPNet, bool) {
 			_, net, err := net.ParseCIDR(e)
 			if err != nil {
 				return nil, false
@@ -306,11 +315,19 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 		})
 		processedCidrs := []routeState{}
 
+		_, allocNet, err := net.ParseCIDR(nw.Spec.AllocatableCIDR)
+		if err != nil {
+			return err
+		}
+		allocatableFound := false
+
 		for i := range routes {
 			route := &routes[i]
 			cidr, isAllowed := lo.Find(allowedCidrs, func(i *net.IPNet) bool {
 				gwValid := lo.ContainsBy(nw.Status.Routers, func(r nwApi.OverlayNetworkIPAllocation) bool { return net.ParseIP(r.IP).Equal(route.Gw) })
-				return netEqual(route.Dst, i) && gwValid
+				isAllocatableRoute := netEqual(route.Dst, allocNet) && route.Gw == nil
+				allocatableFound = allocatableFound || isAllocatableRoute
+				return isAllocatableRoute || (netEqual(route.Dst, i) && gwValid)
 			})
 			if !isAllowed {
 				// route should not be here
@@ -320,6 +337,18 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 			} else {
 				// Push the route into our own intermediate state, with the target net and the gateway
 				processedCidrs = append(processedCidrs, routeState{net: cidr, router: route.Gw})
+			}
+		}
+
+		if !allocatableFound {
+			// Add "owned" network route
+			if err := netlink.RouteAdd(&netlink.Route{
+				LinkIndex: link.Attrs().Index,
+				Scope:     netlink.SCOPE_LINK,
+				Dst:       allocNet,
+				Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
+			}); err != nil {
+				return err
 			}
 		}
 
@@ -333,7 +362,6 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 				// Add route
 				if err := netlink.RouteAdd(&netlink.Route{
 					LinkIndex: link.Attrs().Index,
-					Scope:     netlink.SCOPE_LINK,
 					Dst:       route,
 					Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
 					Gw:        net.ParseIP(router.IP),

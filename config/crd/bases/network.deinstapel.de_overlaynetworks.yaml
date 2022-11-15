@@ -39,6 +39,9 @@ spec:
                 description: AllocatableCIDR is the cidr where member and router pods
                   get their IP addresses allocated from
                 type: string
+              port:
+                description: Port is the UDP port where the allocation is created
+                type: integer
               routableCIDRs:
                 description: RoutableCIDRs is the list of cidrs that is reachable
                   through the router pods of this network

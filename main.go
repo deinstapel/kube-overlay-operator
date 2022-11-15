@@ -30,10 +30,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	networkv1alpha1 "github.com/deinstapel/kube-overlay-operator/api/v1alpha1"
 	"github.com/deinstapel/kube-overlay-operator/controllers"
 	"github.com/deinstapel/kube-overlay-operator/tunneler"
+	"github.com/deinstapel/kube-overlay-operator/webhooks"
+	"github.com/pmorjan/kmod"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -115,7 +118,30 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "Pod")
 			os.Exit(1)
 		}
+
+		// Setup webhooks
+		setupLog.Info("setting up webhook server")
+		hookServer := mgr.GetWebhookServer()
+
+		setupLog.Info("registering webhooks to the webhook server")
+		hookServer.Register("/mutate-v1-pod", &webhook.Admission{Handler: &webhooks.PodInjector{Client: mgr.GetClient()}})
 	} else {
+		k, err := kmod.New(
+			kmod.SetInitFunc(modInitFunc),
+		)
+		if err != nil {
+			setupLog.Error(err, "unable to initialize kmod loader")
+			os.Exit(1)
+		}
+		if err := k.Load("fou", "", 0); err != nil {
+			setupLog.Error(err, "unable to load fou")
+			os.Exit(1)
+		}
+		if err := k.Load("ipip", "", 0); err != nil {
+			setupLog.Error(err, "unable to load ipip")
+			os.Exit(1)
+		}
+
 		// Pod started in sidecar mode
 		if err := (&tunneler.TunnelReconciler{
 			Client: mgr.GetClient(),
