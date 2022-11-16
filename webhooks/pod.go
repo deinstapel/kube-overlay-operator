@@ -62,8 +62,8 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 		Name:  "overlaysidecar",
 		Image: os.Getenv("SIDECAR_IMAGE"), // should be equal to the local pod image
 		Env: []corev1.EnvVar{
-			{Name: "RUN_MODE", Value: "SIDECAR"},
 			{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+			{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
 		},
 		SecurityContext: &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{

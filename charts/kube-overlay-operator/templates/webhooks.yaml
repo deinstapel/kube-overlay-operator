@@ -1,0 +1,65 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ .Release.Name }}-pod-injector
+  labels:
+    app.kubernetes.io/component: "webhooks"
+    {{- include "kube-overlay-operator.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-webhook-cert
+webhooks:
+- admissionReviewVersions:
+  - v1
+  objectSelector:
+    matchLabels:
+      network.deinstapel.de/inject-sidecar: "true"
+  clientConfig:
+    service:
+      name: {{ include "kube-overlay-operator.fullname" . }}-webhooks
+      namespace: {{ .Release.Namespace }}
+      path: /mutate-v1-pod
+  failurePolicy: Fail
+  name: mpod.kb.io
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: validating-webhook-configuration
+  labels:
+    app.kubernetes.io/component: "webhooks"
+    {{- include "kube-overlay-operator.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-webhook-cert
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: {{ include "kube-overlay-operator.fullname" . }}-webhooks
+      namespace: {{ .Release.Namespace }}
+      path: /validate-network-deinstapel-de-v1alpha1-overlaynetwork
+  failurePolicy: Fail
+  name: voverlaynetwork.kb.io
+  rules:
+  - apiGroups:
+    - network.deinstapel.de
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - overlaynetworks
+  sideEffects: None

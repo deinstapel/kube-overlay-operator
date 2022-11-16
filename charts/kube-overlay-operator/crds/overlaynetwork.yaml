@@ -1,0 +1,90 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.10.0
+  name: overlaynetworks.network.deinstapel.de
+spec:
+  conversion:
+    strategy: None
+  group: network.deinstapel.de
+  names:
+    kind: OverlayNetwork
+    listKind: OverlayNetworkList
+    plural: overlaynetworks
+    singular: overlaynetwork
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: OverlayNetwork is the Schema for the overlaynetworks API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: OverlayNetworkSpec defines the desired state of OverlayNetwork
+            properties:
+              allocatableCIDR:
+                description: AllocatableCIDR is the cidr where member and router pods
+                  get their IP addresses allocated from
+                type: string
+              port:
+                description: Port is the UDP port where the allocation is created
+                type: integer
+              routableCIDRs:
+                description: RoutableCIDRs is the list of cidrs that is reachable
+                  through the router pods of this network
+                items:
+                  type: string
+                type: array
+            type: object
+          status:
+            description: OverlayNetworkStatus defines the observed state of OverlayNetwork
+            properties:
+              allocations:
+                description: Allocations contains all IP addresses that have been
+                  handed out to pods from this network
+                items:
+                  description: OverlayNetworkIPAllocation contains information on
+                    a single IP address and to which pod it belongs
+                  properties:
+                    ip:
+                      type: string
+                    podIP:
+                      type: string
+                    podName:
+                      type: string
+                  type: object
+                type: array
+              routers:
+                description: Routers contains all IP addresses that act as routers
+                  for this network
+                items:
+                  description: OverlayNetworkIPAllocation contains information on
+                    a single IP address and to which pod it belongs
+                  properties:
+                    ip:
+                      type: string
+                    podIP:
+                      type: string
+                    podName:
+                      type: string
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

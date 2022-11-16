@@ -1,0 +1,27 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook-issuer
+    {{- include "kube-overlay-operator.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}-webhook-issuer
+spec:
+  selfSigned: {}
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook-cert
+    {{- include "kube-overlay-operator.labels" . | nindent 4 }}
+  name: {{ .Release.Name}}-webhook-cert
+spec:
+  dnsNames:
+  - {{ include "kube-overlay-operator.fullname" . }}-webhooks.{{ .Release.Namespace }}.svc
+  - {{ include "kube-overlay-operator.fullname" . }}-webhooks.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ .Release.Name }}-webhook-issuer
+  secretName: {{ .Release.Name }}-webhook-server-cert

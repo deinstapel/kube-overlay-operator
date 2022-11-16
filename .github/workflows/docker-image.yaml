@@ -19,7 +19,7 @@ jobs:
   build-and-push-image:
     strategy:
       matrix:
-        image: ["operator", "sidecar"]
+        image: ["operator", "sidecar", "webhook"]
     runs-on: ubuntu-latest
     permissions:
       contents: read

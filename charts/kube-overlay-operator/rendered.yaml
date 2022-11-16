@@ -1,0 +1,524 @@
+---
+# Source: kube-overlay-operator/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kovop-kube-overlay-operator
+  labels:
+    app.kubernetes.io/component: "operator"
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-metrics-reader
+rules:
+- nonResourceURLs:
+  - "/metrics"
+  verbs:
+  - get
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+# HINT: THIS CR IS MANDATORY AND THE NAMING IS FIXED
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: overlay-network-sidecar
+rules:
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks
+  verbs:
+  - get
+  - list
+  - watch
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kovop-operator
+  labels:
+    app.kubernetes.io/component: rbac
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - network.deinstapel.de
+  resources:
+  - overlaynetworks/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kovop-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: kovop-kube-overlay-operator
+  namespace: overlay-operator
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kovop-operator
+subjects:
+- kind: ServiceAccount
+  name: kovop-kube-overlay-operator
+  namespace: overlay-operator
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+# permissions to do leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: leader-election
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-leader-election
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+# Source: kube-overlay-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: leader-election
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-leader-election
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kovop-leader-election
+subjects:
+- kind: ServiceAccount
+  name: kovop-kube-overlay-operator
+  namespace: overlay-operator
+---
+# Source: kube-overlay-operator/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kovop-kube-overlay-operator-webhooks
+  labels:
+    app.kubernetes.io/component: "webhooks"
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 9443
+  selector:
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+---
+# Source: kube-overlay-operator/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: "metrics"
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-kube-overlay-operator-metrics
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: https
+  selector:
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+---
+# Source: kube-overlay-operator/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kovop-kube-overlay-operator
+  labels:
+    app.kubernetes.io/component: operator
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-overlay-operator
+      app.kubernetes.io/instance: kovop
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: operator
+      labels:
+        app.kubernetes.io/name: kube-overlay-operator
+        app.kubernetes.io/instance: kovop
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: In
+                  values:
+                    - amd64
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                    - linux
+      securityContext:
+        runAsNonRoot: true
+      volumes:
+      - name: webhook-cert
+        secret:
+          defaultMode: 420
+          secretName: kovop-webhook-server-cert
+      containers:
+      - name: kube-rbac-proxy
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - "ALL"
+        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.0
+        args:
+        - "--secure-listen-address=0.0.0.0:8443"
+        - "--upstream=http://127.0.0.1:8080/"
+        - "--logtostderr=true"
+        - "--v=0"
+        ports:
+        - containerPort: 8443
+          protocol: TCP
+          name: https
+      - command:
+        - /manager
+        args:
+        - "--leader-elect"
+        - "--health-probe-bind-address=:8081"
+        - "--metrics-bind-address=127.0.0.1:8080"
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-cert
+          readOnly: true
+        image: "ghcr.io/deinstapel/kube-overlay-operator/operator:edge"
+        imagePullPolicy: Always
+        name: operator
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      serviceAccountName: kovop-kube-overlay-operator
+      terminationGracePeriodSeconds: 60
+---
+# Source: kube-overlay-operator/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook-cert
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-webhook-cert
+spec:
+  dnsNames:
+  - kovop-kube-overlay-operator-webhooks.overlay-operator.svc
+  - kovop-kube-overlay-operator-webhooks.overlay-operator.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: kovop-webhook-issuer
+  secretName: kovop-webhook-server-cert
+---
+# Source: kube-overlay-operator/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook-issuer
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  name: kovop-webhook-issuer
+spec:
+  selfSigned: {}
+---
+# Source: kube-overlay-operator/templates/webhooks.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: kovop-pod-injector
+  labels:
+    app.kubernetes.io/component: "webhooks"
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    cert-manager.io/inject-ca-from: overlay-operator/kovop-webhook-cert
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+  service:
+    name: kovop-kube-overlay-operator-webhooks
+    namespace: overlay-operator
+    path: /mutate-v1-pod
+  failurePolicy: Fail
+  name: overlaynetwork.deinstapel.de
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+---
+# Source: kube-overlay-operator/templates/webhooks.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: validating-webhook-configuration
+  labels:
+    app.kubernetes.io/component: "webhooks"
+    helm.sh/chart: kube-overlay-operator-0.1.0
+    app.kubernetes.io/name: kube-overlay-operator
+    app.kubernetes.io/instance: kovop
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    cert-manager.io/inject-ca-from: overlay-operator/kovop-webhook-cert
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kovop-kube-overlay-operator-webhooks
+      namespace: overlay-operator
+      path: /validate-network-deinstapel-de-v1alpha1-overlaynetwork
+  failurePolicy: Fail
+  name: voverlaynetwork.kb.io
+  rules:
+  - apiGroups:
+    - network.deinstapel.de
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - overlaynetworks
+  sideEffects: None
