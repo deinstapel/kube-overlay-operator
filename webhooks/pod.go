@@ -63,7 +63,7 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 	}
 
 	// Sidecar has been injected, put finalizer into pod
-	pod.Finalizers = append(pod.Finalizers, controllers.OVERLAY_NETWORK_FINALIZER)
+	pod.Finalizers = append(pod.Finalizers, controllers.POD_FINALIZER)
 
 	pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{
 		Name:            "overlaysidecar",

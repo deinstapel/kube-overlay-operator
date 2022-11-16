@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -86,6 +87,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	hasErrors := false
 
 	if pod.DeletionTimestamp != nil {
+		logger.Info(fmt.Sprintf("pod %v was deleted, phase is %v, preparing deletion", pod.Name, pod.Status.Phase))
 		if pod.Status.Phase != "Running" && pod.Status.Phase != "Unknown" {
 			// pod.DeletionTimestamp != nil means it was deleted
 			// phase != Running && phase != Unknown means it's either pending or succeeded or failed, which means all containers
