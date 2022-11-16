@@ -60,8 +60,8 @@ func init() {
 func main() {
 	var metricsAddr string
 	var probeAddr string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":12000", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":12001", "The address the probe endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":12001", "The address the metric endpoint binds to.")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":12000", "The address the probe endpoint binds to.")
 	// in sidecar mode, we want to only read the resource in the namespace
 
 	opts := zap.Options{

@@ -72,6 +72,8 @@ spec:
         env:
         - name: "SIDECAR_IMAGE"
           value: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag | default .Chart.AppVersion }}"
+        - name: "SIDECAR_PULL_POLICY"
+          value: "{{ .Values.sidecar.image.pullPolicy }}"
         ports:
         - containerPort: 9443
           name: webhook-server
