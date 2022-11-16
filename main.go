@@ -32,11 +32,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/pmorjan/kmod"
+
 	networkv1alpha1 "github.com/deinstapel/kube-overlay-operator/api/v1alpha1"
 	"github.com/deinstapel/kube-overlay-operator/controllers"
 	"github.com/deinstapel/kube-overlay-operator/tunneler"
 	"github.com/deinstapel/kube-overlay-operator/webhooks"
-	"github.com/pmorjan/kmod"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -138,7 +139,7 @@ func main() {
 
 		setupLog.Info("registering webhooks to the webhook server")
 		hookServer.Register("/mutate-v1-pod", &webhook.Admission{Handler: &webhooks.PodInjector{Client: mgr.GetClient()}})
-		hookServer.Register("/validate-v1alpha1-overlaynetwork", &webhook.Admission{Handler: &webhooks.PodInjector{Client: mgr.GetClient()}})
+		hookServer.Register("/validate-network-deinstapel-de-v1alpha1-overlaynetwork", &webhook.Admission{Handler: &webhooks.OverlayNetworkValidator{Client: mgr.GetClient()}})
 	} else {
 		k, err := kmod.New(
 			kmod.SetInitFunc(modInitFunc),

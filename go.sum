@@ -92,8 +92,6 @@ github.com/cncf/xds/go v0.0.0-20210312221358-fbca930ec8ed/go.mod h1:eXthEFrGJvWH
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/deinstapel/netlink v0.0.0-20221115092549-a09d7ece8a50 h1:UpYy+ak31t2GuEu/zh6/EBolfpKN3iYwXaeyCGYsDBg=
-github.com/deinstapel/netlink v0.0.0-20221115092549-a09d7ece8a50/go.mod h1:cAAsePK2e15YDAMJNyOpGYEWNe4sIghTY7gpz4cX/Ik=
 github.com/deinstapel/netlink v0.0.0-20221115100137-b7c69d240d07 h1:ymPdTN8/XLFHV1TYcE+zOwdSZZKCFlssQHFlcneEAh4=
 github.com/deinstapel/netlink v0.0.0-20221115100137-b7c69d240d07/go.mod h1:cAAsePK2e15YDAMJNyOpGYEWNe4sIghTY7gpz4cX/Ik=
 github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815/go.mod h1:WwZ+bS3ebgob9U8Nd0kOddGdZWjyMGR8Wziv+TBNwSE=

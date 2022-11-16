@@ -37,9 +37,9 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-v1alpha1-overlaynetwork
+      path: /validate-network-deinstapel-de-v1alpha1-overlaynetwork
   failurePolicy: Fail
-  name: overlaynetwork.deinstapel.de
+  name: voverlaynetwork.kb.io
   rules:
   - apiGroups:
     - network.deinstapel.de

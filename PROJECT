@@ -16,4 +16,7 @@ resources:
   kind: OverlayNetwork
   path: github.com/deinstapel/kube-overlay-operator/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
 version: "3"
