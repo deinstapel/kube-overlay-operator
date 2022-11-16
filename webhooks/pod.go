@@ -8,10 +8,10 @@ import (
 	"os"
 
 	"github.com/deinstapel/kube-overlay-operator/controllers"
-	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -28,7 +28,7 @@ type PodInjector struct {
 }
 
 func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admission.Response {
-	logger, _ := logr.FromContext(ctx)
+	logger := log.FromContext(ctx)
 	pod := &corev1.Pod{}
 	err := a.decoder.Decode(req, pod)
 	if err != nil {
