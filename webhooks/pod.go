@@ -40,7 +40,7 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 	}
 
 	sa := &corev1.ServiceAccount{}
-	if err := a.Client.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: controllers.OVELRAY_NETWORK_SERVICE_ACCOUNT}, sa); err != nil {
+	if err = a.Client.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: controllers.OVELRAY_NETWORK_SERVICE_ACCOUNT}, sa); err != nil {
 		logger.Error(err, "Failed to get service account", "ns", pod.Namespace)
 		return admission.Errored(http.StatusPreconditionFailed, fmt.Errorf("sidecar service account retrieval error: %v", err))
 	}
