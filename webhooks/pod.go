@@ -10,6 +10,7 @@ import (
 	"github.com/deinstapel/kube-overlay-operator/controllers"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -65,8 +66,9 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 	pod.Finalizers = append(pod.Finalizers, controllers.OVERLAY_NETWORK_FINALIZER)
 
 	pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{
-		Name:  "overlaysidecar",
-		Image: os.Getenv("SIDECAR_IMAGE"), // should be equal to the local pod image
+		Name:            "overlaysidecar",
+		Image:           os.Getenv("SIDECAR_IMAGE"), // should be equal to the local pod image
+		ImagePullPolicy: corev1.PullPolicy(os.Getenv("SIDECAR_PULL_POLICY")),
 		Env: []corev1.EnvVar{
 			{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 			{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
@@ -76,6 +78,32 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 				Add: []corev1.Capability{
 					corev1.Capability("SYS_MODULE"),
 					corev1.Capability("NET_ADMIN"),
+				},
+			},
+		},
+		ReadinessProbe: &corev1.Probe{
+			InitialDelaySeconds: 10,
+			PeriodSeconds:       10,
+			TimeoutSeconds:      5,
+			SuccessThreshold:    1,
+			FailureThreshold:    3,
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt(12000),
+					Path: "/readyz",
+				},
+			},
+		},
+		LivenessProbe: &corev1.Probe{
+			InitialDelaySeconds: 10,
+			PeriodSeconds:       10,
+			TimeoutSeconds:      5,
+			SuccessThreshold:    1,
+			FailureThreshold:    3,
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt(12000),
+					Path: "/healthz",
 				},
 			},
 		},
