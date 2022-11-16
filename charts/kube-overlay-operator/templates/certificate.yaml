@@ -19,8 +19,8 @@ metadata:
   name: {{ .Release.Name}}-webhook-cert
 spec:
   dnsNames:
-  - {{ include "kube-overlay-operator.fullname" . }}-webhooks.{{ .Release.Namespace }}.svc
-  - {{ include "kube-overlay-operator.fullname" . }}-webhooks.{{ .Release.Namespace }}.svc.cluster.local
+  - {{ include "kube-overlay-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc
+  - {{ include "kube-overlay-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc.cluster.local
   issuerRef:
     kind: Issuer
     name: {{ .Release.Name }}-webhook-issuer

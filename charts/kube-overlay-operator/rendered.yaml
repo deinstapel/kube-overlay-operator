@@ -547,6 +547,7 @@ spec:
         secret:
           defaultMode: 420
           secretName: kovop-webhook-server-cert
+      hostNetwork: true
       containers:
       - name: kube-rbac-proxy
         securityContext:
@@ -624,8 +625,8 @@ metadata:
   name: kovop-webhook-cert
 spec:
   dnsNames:
-  - kovop-webhooks.kovop.svc
-  - kovop-webhooks.kovop.svc.cluster.local
+  - kovop-webhook.kovop.svc
+  - kovop-webhook.kovop.svc.cluster.local
   issuerRef:
     kind: Issuer
     name: kovop-webhook-issuer

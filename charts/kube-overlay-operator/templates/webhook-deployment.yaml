@@ -46,6 +46,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      hostNetwork: {{ .Values.webhook.hostNetwork }}
       containers:
       - name: kube-rbac-proxy
         securityContext:

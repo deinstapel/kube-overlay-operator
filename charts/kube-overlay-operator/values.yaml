@@ -9,6 +9,7 @@ webhook:
     create: true
     name: ""
     annotations: {}
+  hostNetwork: true
 
 sidecar:
   image:

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/deinstapel/kube-overlay-operator/controllers"
+	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,6 +28,7 @@ type PodInjector struct {
 }
 
 func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admission.Response {
+	logger, _ := logr.FromContext(ctx)
 	pod := &corev1.Pod{}
 	err := a.decoder.Decode(req, pod)
 	if err != nil {
@@ -39,19 +41,23 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 
 	sa := &corev1.ServiceAccount{}
 	if err := a.Client.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: controllers.OVELRAY_NETWORK_SERVICE_ACCOUNT}, sa); err != nil {
+		logger.Error(err, "Failed to get service account", "ns", pod.Namespace)
 		return admission.Errored(http.StatusPreconditionFailed, fmt.Errorf("sidecar service account retrieval error: %v", err))
 	}
 	if len(sa.Secrets) == 0 {
+		logger.Error(fmt.Errorf("serviceaccount has no secrets"), "serviceaccount has no secrets", "ns", pod.Namespace)
 		return admission.Errored(http.StatusPreconditionFailed, fmt.Errorf("sidecar service account does not have a token"))
 	}
 
 	if lo.ContainsBy(pod.Spec.Containers, func(c corev1.Container) bool {
 		return lo.ContainsBy(c.VolumeMounts, func(v corev1.VolumeMount) bool { return v.Name == modulesVolumeName })
 	}) {
+		logger.Info(fmt.Sprintf("Denying pod for usage of volume %v", modulesVolumeName))
 		return admission.Denied(fmt.Sprintf("volume name %s is forbidden as it is reserved by the sidecar", modulesVolumeName))
 	}
 
 	if lo.ContainsBy(pod.Spec.Volumes, func(v corev1.Volume) bool { return v.Name == modulesVolumeName }) {
+		logger.Info(fmt.Sprintf("Denying pod for usage of volume %v", modulesVolumeName))
 		return admission.Denied(fmt.Sprintf("volume name %s is forbidden as it is reserved by the sidecar", modulesVolumeName))
 	}
 
