@@ -200,7 +200,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - authorization.k8s.io
+  - rbac.authorization.k8s.io
   resources:
   - rolebindings
   verbs:

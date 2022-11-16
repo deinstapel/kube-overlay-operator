@@ -68,6 +68,9 @@ spec:
         args:
         - "--health-probe-bind-address=:8081"
         - "--metrics-bind-address=127.0.0.1:8080"
+        env:
+        - name: "SIDECAR_IMAGE"
+          value: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag | default .Chart.AppVersion }}"
         ports:
         - containerPort: 9443
           name: webhook-server

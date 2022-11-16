@@ -10,7 +10,11 @@ webhook:
     name: ""
     annotations: {}
 
-
+sidecar:
+  image:
+    repository: ghcr.io/deinstapel/kube-overlay-operator/sidecar
+    tag: edge
+    pullPolicy: Always
 
 replicaCount: 1
 image:

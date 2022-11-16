@@ -139,7 +139,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - authorization.k8s.io
+  - rbac.authorization.k8s.io
   resources:
   - rolebindings
   verbs:
@@ -567,9 +567,11 @@ spec:
       - command:
         - /manager
         args:
-        - "--leader-elect"
         - "--health-probe-bind-address=:8081"
         - "--metrics-bind-address=127.0.0.1:8080"
+        env:
+        - name: "SIDECAR_IMAGE"
+          value: "ghcr.io/deinstapel/kube-overlay-operator/sidecar:edge"
         ports:
         - containerPort: 9443
           name: webhook-server

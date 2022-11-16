@@ -97,7 +97,7 @@ func (r *NamespaceReconciler) reconcileRole(ctx context.Context, ns string) erro
 		{Kind: "ServiceAccount", APIGroup: "", Namespace: ns, Name: OVELRAY_NETWORK_SERVICE_ACCOUNT},
 	}
 	role.RoleRef = rbacv1.RoleRef{
-		APIGroup: "authorization.k8s.io",
+		APIGroup: "rbac.authorization.k8s.io",
 		Kind:     "ClusterRole",
 		Name:     OVELRAY_NETWORK_SERVICE_ACCOUNT,
 	}
