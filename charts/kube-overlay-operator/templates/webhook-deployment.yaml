@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kube-overlay-operator.fullname" . }}
+  name: {{ include "kube-overlay-operator.fullname" . }}-webhook
   labels:
-    app.kubernetes.io/component: operator
+    app.kubernetes.io/component: webhook
     {{- include "kube-overlay-operator.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: operator
+      app.kubernetes.io/component: webhook
       {{- include "kube-overlay-operator.selectorLabels" . | nindent 6 }}
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ coalesce .Values.webhook.replicaCount .Values.replicaCount }}
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: operator
-        {{- with .Values.podAnnotations }}
+        {{- with coalesce .Values.webhook.podAnnotations .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        app.kubernetes.io/component: operator
+        app.kubernetes.io/component: webhook
         {{- include "kube-overlay-operator.selectorLabels" . | nindent 8 }}
     spec:
       affinity:
@@ -37,6 +37,11 @@ spec:
                     - linux
       securityContext:
         runAsNonRoot: true
+      volumes:
+      - name: webhook-cert
+        secret:
+          defaultMode: 420
+          secretName: {{ .Release.Name }}-webhook-server-cert
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -61,25 +66,32 @@ spec:
       - command:
         - /manager
         args:
-        - "--leader-elect"
         - "--health-probe-bind-address=:8081"
         - "--metrics-bind-address=127.0.0.1:8080"
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-cert
+          readOnly: true
+        image: "{{ .Values.webhook.image.repository }}:{{ .Values.webhook.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.webhook.image.pullPolicy }}
         name: operator
         securityContext:
-          {{- toYaml .Values.securityContext | nindent 10 }}
+          {{- toYaml (coalesce .Values.webhook.securityContext .Values.securityContext) | nindent 10 }}
         resources:
-          {{- toYaml .Values.resources | nindent 12 }}
-        {{- with .Values.nodeSelector }}
+          {{- toYaml (coalesce .Values.webhook.resources .Values.resources) | nindent 12 }}
+        {{- with (coalesce .Values.webhook.nodeSelector .Values.nodeSelector) }}
         nodeSelector:
           {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.affinity }}
+        {{- with coalesce .Values.webhook.affinity .Values.affinity }}
         affinity:
           {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.tolerations }}
+        {{- with coalesce .Values.webhook.tolerations .Values.tolerations }}
         tolerations:
           {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -95,7 +107,7 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-      serviceAccountName: {{ include "kube-overlay-operator.serviceAccountName" . }}
+      serviceAccountName: {{ include "kube-overlay-operator.webhookServiceAccountName" . }}
       terminationGracePeriodSeconds: 60
 ---
 

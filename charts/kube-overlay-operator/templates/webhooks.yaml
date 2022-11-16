@@ -4,7 +4,7 @@ kind: MutatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-pod-injector
   labels:
-    app.kubernetes.io/component: "webhooks"
+    app.kubernetes.io/component: "webhook"
     {{- include "kube-overlay-operator.labels" . | nindent 4 }}
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-webhook-cert
@@ -16,7 +16,7 @@ webhooks:
       network.deinstapel.de/inject-sidecar: "true"
   clientConfig:
     service:
-      name: {{ include "kube-overlay-operator.fullname" . }}-webhooks
+      name: {{ include "kube-overlay-operator.fullname" . }}-webhook
       namespace: {{ .Release.Namespace }}
       path: /mutate-v1-pod
   failurePolicy: Fail
@@ -38,7 +38,7 @@ metadata:
   creationTimestamp: null
   name: validating-webhook-configuration
   labels:
-    app.kubernetes.io/component: "webhooks"
+    app.kubernetes.io/component: "webhook"
     {{- include "kube-overlay-operator.labels" . | nindent 4 }}
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Release.Name }}-webhook-cert
@@ -47,7 +47,7 @@ webhooks:
   - v1
   clientConfig:
     service:
-      name: {{ include "kube-overlay-operator.fullname" . }}-webhooks
+      name: {{ include "kube-overlay-operator.fullname" . }}-webhook
       namespace: {{ .Release.Namespace }}
       path: /validate-network-deinstapel-de-v1alpha1-overlaynetwork
   failurePolicy: Fail

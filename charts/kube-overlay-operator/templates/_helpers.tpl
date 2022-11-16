@@ -60,3 +60,14 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create the name of the service account to use for webhooks
+*/}}
+{{- define "kube-overlay-operator.webhookServiceAccountName" -}}
+{{- if .Values.webhook.serviceAccount.create }}
+{{- default (print (include "kube-overlay-operator.fullname" .) "-webhook") .Values.webhook.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.webhook.serviceAccount.name }}
+{{- end }}
+{{- end }}

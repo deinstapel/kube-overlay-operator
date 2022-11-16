@@ -1,3 +1,17 @@
+webhook:
+  image:
+    repository: ghcr.io/deinstapel/kube-overlay-operator/webhook
+    tag: edge
+    pullPolicy: Always
+  replicaCount: 1
+  resources: {}
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+
+
 replicaCount: 1
 image:
   repository: ghcr.io/deinstapel/kube-overlay-operator/operator
