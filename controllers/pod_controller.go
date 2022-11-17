@@ -56,10 +56,10 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	logger := log.FromContext(ctx)
 	pod := &corev1.Pod{}
 	if err := r.Get(ctx, req.NamespacedName, pod); err != nil {
-		logger.Error(err, "Could not retrieve pod")
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
+		logger.Error(err, "Could not retrieve pod")
 		return ctrl.Result{}, err
 	}
 
@@ -87,8 +87,9 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	hasErrors := false
 
 	if pod.DeletionTimestamp != nil {
-		logger.Info(fmt.Sprintf("pod %v was deleted, phase is %v, preparing deletion", pod.Name, pod.Status.Phase))
-		if pod.Status.Phase != "Running" && pod.Status.Phase != "Unknown" {
+		logger.Info(fmt.Sprintf("pod %v was deleted, waiting for containers to terminate", pod.Name))
+		if !lo.ContainsBy(pod.Status.ContainerStatuses, func(c corev1.ContainerStatus) bool { return c.Ready || (c.Started != nil && *c.Started) }) {
+			logger.Info(fmt.Sprintf("pod %v was terminated, deallocating IPs and removing finalizer", pod.Name))
 			// pod.DeletionTimestamp != nil means it was deleted
 			// phase != Running && phase != Unknown means it's either pending or succeeded or failed, which means all containers
 			// have exited, so we can safely free all IPs used by the pod
