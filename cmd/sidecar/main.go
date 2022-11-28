@@ -106,12 +106,13 @@ func main() {
 		setupLog.Error(err, "unable to load ipip")
 		os.Exit(1)
 	}
-
-	// Pod started in sidecar mode
-	if err := (&tunneler.TunnelReconciler{
+	reconciler := &tunneler.TunnelReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}
+
+	// Pod started in sidecar mode
+	if err := reconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OverlayTunneler")
 		os.Exit(1)
 	}
@@ -131,6 +132,8 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+	reconciler.Shutdown()
 }
 
 // modInitFunc supports uncompressed files and gzip and xz compressed files

@@ -23,6 +23,7 @@ import (
 	"hash/fnv"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"sync/atomic"
 
@@ -59,6 +60,8 @@ type routeState struct {
 	net    *net.IPNet
 	router net.IP
 }
+
+var linkNameRegex = regexp.MustCompile("^o[A-Za-z]_[0-9a-zA-Z]{8,11}$")
 
 //+kubebuilder:rbac:groups=network.deinstapel.de,resources=overlaynetworks,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=network.deinstapel.de,resources=overlaynetworks/status,verbs=get;update;patch
@@ -372,6 +375,22 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 		}
 	}
 	return nil
+}
+
+// Shutdown terminates all network interfaces
+func (r *TunnelReconciler) Shutdown() {
+	nw, err := netlink.LinkList()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to list links: %v", err)
+		return
+	}
+	for _, link := range nw {
+		if linkNameRegex.Match([]byte(link.Attrs().Name)) {
+			if err := netlink.LinkDel(link); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to delete link %v: %v", link.Attrs().Name, err)
+			}
+		}
+	}
 }
 
 func netEqual(n1 *net.IPNet, n2 *net.IPNet) bool {
