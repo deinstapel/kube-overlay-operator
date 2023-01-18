@@ -33,6 +33,17 @@ type OverlayNetworkSpec struct {
 
 	// RoutableCIDRs is the list of cidrs that is reachable through the router pods of this network
 	RoutableCIDRs []string `json:"routableCIDRs,omitempty"`
+
+	// OptionalRoutes is a list of cidrs that can be reached through another pod on the network that acts as router
+	OptionalRoutes []OverlayNetworkExtraRoute `json:"optionalRoutes,omitempty"`
+}
+
+// OverlayNetworkExtraRoute defines an additional cidr that needs to be opted in to be able to be reached
+type OverlayNetworkExtraRoute struct {
+	// Name is the human readable name of the cidr, used in annotations
+	Name string `json:"name,omitempty"`
+	// RoutableCIDRs is the list of cidrs that is reachable through the router pods of this network
+	RoutableCIDRs []string `json:"routableCIDRs,omitempty"`
 }
 
 // OverlayNetworkStatus defines the observed state of OverlayNetwork
@@ -42,13 +53,17 @@ type OverlayNetworkStatus struct {
 
 	// Routers contains all IP addresses that act as routers for this network
 	Routers []OverlayNetworkIPAllocation `json:"routers,omitempty"`
+
+	// OptionalRouters defines all routers for every optional route that exists
+	OptionalRouters map[string][]OverlayNetworkIPAllocation `json:"optionalRouters,omitempty"`
 }
 
 // OverlayNetworkIPAllocation contains information on a single IP address and to which pod it belongs
 type OverlayNetworkIPAllocation struct {
-	PodName string `json:"podName,omitempty"`
-	PodIP   string `json:"podIP,omitempty"`
-	IP      string `json:"ip,omitempty"`
+	PodName       string   `json:"podName,omitempty"`
+	PodIP         string   `json:"podIP,omitempty"`
+	IP            string   `json:"ip,omitempty"`
+	ExtraNetworks []string `json:"extraNetworks,omitempty"`
 }
 
 //+kubebuilder:object:root=true

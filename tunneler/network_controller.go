@@ -78,7 +78,7 @@ func (r *TunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 		return ctrl.Result{}, err
 	}
-
+	localPodMember, isMember := lo.Find(nw.Status.Allocations, func(t nwApi.OverlayNetworkIPAllocation) bool { return t.PodName == r.myPodName })
 	localPodRouter, isRouter := lo.Find(nw.Status.Routers, func(t nwApi.OverlayNetworkIPAllocation) bool { return t.PodName == r.myPodName })
 
 	targetLinkState := make(map[string]*LinkInfo)
@@ -95,25 +95,55 @@ func (r *TunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				Processed:        false,
 			}
 		})
-	} else {
-		localPodMember, isMember := lo.Find(nw.Status.Allocations, func(t nwApi.OverlayNetworkIPAllocation) bool { return t.PodName == r.myPodName })
-		if isMember {
-			// I am no router but a client
-			targetLinkState = lo.SliceToMap(nw.Status.Routers, func(item nwApi.OverlayNetworkIPAllocation) (string, *LinkInfo) {
-				linkName := r.getTunnelId(nw, &item)
-				return linkName, &LinkInfo{
-					RemoteIP:         item.PodIP,
-					LocalIP:          localPodMember.PodIP,
-					InTunnelLocalIP:  localPodMember.IP,
-					InTunnelRemoteIP: item.IP,
-					Processed:        false,
-				}
+	} else if isMember {
+		// I am no router but a client
+		targetLinkState = lo.SliceToMap(nw.Status.Routers, func(item nwApi.OverlayNetworkIPAllocation) (string, *LinkInfo) {
+			linkName := r.getTunnelId(nw, &item)
+			return linkName, &LinkInfo{
+				RemoteIP:         item.PodIP,
+				LocalIP:          localPodMember.PodIP,
+				InTunnelLocalIP:  localPodMember.IP,
+				InTunnelRemoteIP: item.IP,
+				Processed:        false,
+			}
+		})
+	}
+
+	extraRoutes := []routeState{}
+
+	if isMember {
+		lo.ForEach(localPodMember.ExtraNetworks, func(item string, _ int) {
+			extraNet, ok := lo.Find(nw.Spec.OptionalRoutes, func(extra nwApi.OverlayNetworkExtraRoute) bool {
+				return extra.Name == item
 			})
-		}
+			if !ok {
+				return
+			}
+			validRouters, ok := nw.Status.OptionalRouters[extraNet.Name]
+			if !ok {
+				return
+			}
+			for _, cidr := range extraNet.RoutableCIDRs {
+				_, cidrObj, err := net.ParseCIDR(cidr)
+				if err != nil {
+					continue
+				}
+				for _, rt := range validRouters {
+					ip := net.ParseIP(rt.IP)
+					if ip == nil {
+						continue
+					}
+					extraRoutes = append(extraRoutes, routeState{
+						net:    cidrObj,
+						router: ip,
+					})
+				}
+			}
+		})
 	}
 
 	logger.Info("Reconciled network space", "ls", targetLinkState)
-	err := r.reconcileTunnelInterfaces(nw, targetLinkState, isRouter)
+	err := r.reconcileTunnelInterfaces(nw, targetLinkState, isRouter, extraRoutes)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile network: %v", err)
 	}
@@ -153,7 +183,7 @@ func (r *TunnelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool) error {
+func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool, extraRoutes []routeState) error {
 
 	// Ensure the receiving side is setup properly
 	if err := r.reconcileFOU(nw, len(targetState) > 0); err != nil {
@@ -204,10 +234,8 @@ func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, t
 	}
 
 	// at this point all links exist, and the allocatable-cidr-routes are setup properly.
-	if !isRouter {
-		if err := r.reconcileRoutesMember(nw, targetState); err != nil {
-			return fmt.Errorf("error setting up routes for network member: %v", err)
-		}
+	if err := r.reconcileRoutes(nw, targetState, isRouter, extraRoutes); err != nil {
+		return fmt.Errorf("error setting up routes for network member: %v", err)
 	}
 
 	return nil
@@ -297,8 +325,8 @@ func (r *TunnelReconciler) reconcileFOU(nw *nwApi.OverlayNetwork, shouldBePresen
 	return nil
 }
 
-// reconcileRoutesMember matches the currently deployed route for interfaces in a single overlay network to match extraCidrs
-func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo) error {
+// reconcileRoutes matches the currently deployed route for interfaces in a single overlay network to match extraCidrs
+func (r *TunnelReconciler) reconcileRoutes(nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool, targetRoutes []routeState) error {
 	for linkName, linkInfo := range targetState {
 		link, err := netlink.LinkByName(linkName)
 		if err != nil {
@@ -309,37 +337,55 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 		if err != nil {
 			return err
 		}
-		allowedCidrs := lo.FilterMap(nw.Spec.RoutableCIDRs, func(e string, i int) (*net.IPNet, bool) {
-			_, net, err := net.ParseCIDR(e)
-			if err != nil {
-				return nil, false
-			}
-			return net, true
-		})
-		processedCidrs := []routeState{}
 
 		_, allocNet, err := net.ParseCIDR(nw.Spec.AllocatableCIDR)
+		allocatableFound := false
 		if err != nil {
 			return err
 		}
-		allocatableFound := false
+
+		if !isRouter {
+			// These routes only exist for members
+			for _, cidr := range nw.Spec.RoutableCIDRs {
+				_, cidrObj, err := net.ParseCIDR(cidr)
+				if err != nil {
+					continue
+				}
+				for _, rt := range nw.Status.Routers {
+					rtIp := net.ParseIP(rt.IP)
+					if rtIp == nil {
+						continue
+					}
+					targetRoutes = append(targetRoutes, routeState{
+						net:    cidrObj,
+						router: rtIp,
+					})
+				}
+			}
+		}
+
+		processedCidrs := []routeState{}
 
 		for i := range routes {
 			route := &routes[i]
-			cidr, isAllowed := lo.Find(allowedCidrs, func(i *net.IPNet) bool {
-				gwValid := lo.ContainsBy(nw.Status.Routers, func(r nwApi.OverlayNetworkIPAllocation) bool { return net.ParseIP(r.IP).Equal(route.Gw) })
-				isAllocatableRoute := netEqual(route.Dst, allocNet) && route.Gw == nil
-				allocatableFound = allocatableFound || isAllocatableRoute
-				return isAllocatableRoute || (netEqual(route.Dst, i) && gwValid)
+			if route.Scope == netlink.SCOPE_LINK && netEqual(route.Dst, allocNet) && route.Src.Equal(net.ParseIP(linkInfo.InTunnelLocalIP)) {
+				allocatableFound = true
+				continue
+			}
+
+			cidr, ok := lo.Find(targetRoutes, func(rt routeState) bool {
+				gwValid := rt.router.Equal(route.Gw)
+				netValid := netEqual(route.Dst, rt.net)
+				return gwValid && netValid
 			})
-			if !isAllowed {
+			if !ok {
 				// route should not be here
 				if err := netlink.RouteDel(route); err != nil {
 					return err
 				}
 			} else {
 				// Push the route into our own intermediate state, with the target net and the gateway
-				processedCidrs = append(processedCidrs, routeState{net: cidr, router: route.Gw})
+				processedCidrs = append(processedCidrs, cidr)
 			}
 		}
 
@@ -355,22 +401,19 @@ func (r *TunnelReconciler) reconcileRoutesMember(nw *nwApi.OverlayNetwork, targe
 			}
 		}
 
-		for _, route := range allowedCidrs {
-			for _, router := range nw.Status.Routers {
-				// Check for duplicates
-				if lo.ContainsBy(processedCidrs, func(p routeState) bool { return netEqual(p.net, route) && net.ParseIP(router.IP).Equal(p.router) }) {
-					continue
-				}
+		for _, route := range targetRoutes {
+			if lo.ContainsBy(processedCidrs, func(p routeState) bool { return netEqual(p.net, route.net) && route.router.Equal(p.router) }) {
+				continue
+			}
 
-				// Add route
-				if err := netlink.RouteAdd(&netlink.Route{
-					LinkIndex: link.Attrs().Index,
-					Dst:       route,
-					Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
-					Gw:        net.ParseIP(router.IP),
-				}); err != nil {
-					return err
-				}
+			// Add route
+			if err := netlink.RouteAdd(&netlink.Route{
+				LinkIndex: link.Attrs().Index,
+				Dst:       route.net,
+				Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
+				Gw:        route.router,
+			}); err != nil {
+				return err
 			}
 		}
 	}

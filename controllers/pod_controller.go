@@ -38,6 +38,11 @@ import (
 
 const POD_NETWORK_MEMBER_ANNOTATION = "network.deinstapel.de/member-of"
 const POD_NETWORK_ROUTER_ANNOTATION = "network.deinstapel.de/router-for"
+
+// Format is overlay/routeName
+const POD_NETWORK_EXTRA_ROUTER_ANNOTATION = "network.deinstapel.de/extra-router"
+const POD_NETWORK_EXTRA_ROUTE_ANNOTATION = "network.deinstapel.de/extra-routes"
+
 const POD_FINALIZER = "network.deinstapel.de/ipam"
 const POD_OVERLAY_LABEL = "network.deinstapel.de/inject-sidecar"
 
@@ -70,6 +75,9 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	memberNetworksList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_MEMBER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
 	routerNetworksList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_ROUTER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
+
+	extraRoutersList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_EXTRA_ROUTER_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
+	extraRoutesList := lo.Filter(strings.Split(pod.Annotations[POD_NETWORK_EXTRA_ROUTE_ANNOTATION], ","), func(s string, i int) bool { return s != "" })
 
 	allNetworkList := lo.Uniq(append(memberNetworksList, routerNetworksList...))
 
@@ -110,9 +118,21 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	for i := range nwList.Items {
 		nw := &nwList.Items[i]
 
+		// Null safety!
+		if nw.Status.OptionalRouters == nil {
+			nw.Status.OptionalRouters = make(map[string][]nwApi.OverlayNetworkIPAllocation)
+		}
+
 		_, isRouter := routerNetworks[nw.Name]
 		if _, ok := uniqueNetworks[nw.Name]; ok {
-			if err := r.allocateIP(ctx, nw, pod, isRouter); err != nil {
+
+			extraRoutersPrefix := fmt.Sprintf("%s/", nw.Name)
+			extraRoutersStrings := lo.Filter(extraRoutersList, func(s string, _ int) bool { return strings.HasPrefix(s, extraRoutersPrefix) })
+			extraRoutesStrings := lo.Filter(extraRoutesList, func(s string, _ int) bool { return strings.HasPrefix(s, extraRoutersPrefix) })
+			extraRoutersNames := lo.Map(extraRoutersStrings, func(s string, _ int) string { return strings.TrimPrefix(s, extraRoutersPrefix) })
+			extraRoutesNames := lo.Map(extraRoutesStrings, func(s string, _ int) string { return strings.TrimPrefix(s, extraRoutersPrefix) })
+
+			if err := r.allocateIP(ctx, nw, pod, isRouter, extraRoutesNames, extraRoutersNames); err != nil {
 				logger.Error(err, "error allocating ip", "network", nw.Name)
 				hasErrors = true
 			} else {
@@ -154,14 +174,13 @@ func (r *PodReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork, pod *corev1.Pod, isRouter bool) error {
-	changes := false
+func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork, pod *corev1.Pod, isRouter bool, extraNetworks []string, extraRouters []string) error {
 	if pod.Status.PodIP == "" {
 		return goerrors.New("refusing assigning overlay IP to pod without primary IP")
 	}
 	logger := log.FromContext(ctx)
 	var allocation nwApi.OverlayNetworkIPAllocation
-	if allocFromList, found := lo.Find(nw.Status.Allocations, func(item nwApi.OverlayNetworkIPAllocation) bool {
+	if allocFromList, allocIndex, found := lo.FindIndexOf(nw.Status.Allocations, func(item nwApi.OverlayNetworkIPAllocation) bool {
 		return pod.Name == item.PodName
 	}); !found {
 		// The pod has no valid IP allocation in this network, so create one
@@ -190,16 +209,30 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork
 		}
 
 		allocation = nwApi.OverlayNetworkIPAllocation{
-			PodName: pod.Name,
-			IP:      ipAlloc,
-			PodIP:   pod.Status.PodIP,
+			PodName:       pod.Name,
+			IP:            ipAlloc,
+			PodIP:         pod.Status.PodIP,
+			ExtraNetworks: extraNetworks,
 		}
 		// Update the allocations in the Network.Status resource
 		nw.Status.Allocations = append(nw.Status.Allocations, allocation)
-		changes = true
 	} else {
 		// pod has existing allocation, reuse for router processing
 		allocation = allocFromList
+		allocation.ExtraNetworks = extraNetworks
+		nw.Status.Allocations[allocIndex] = allocation
+	}
+
+	// Record this pod in the list of optional routers
+	for _, extraRouter := range extraRouters {
+		nw.Status.OptionalRouters[extraRouter] = append(nw.Status.OptionalRouters[extraRouter], allocation)
+	}
+	// Remove this pod from all other optional router networks
+	for rtName := range nw.Status.OptionalRouters {
+		if lo.Contains(extraRouters, rtName) {
+			continue
+		}
+		nw.Status.OptionalRouters[rtName] = lo.Filter(nw.Status.OptionalRouters[rtName], func(n nwApi.OverlayNetworkIPAllocation, _ int) bool { return n.PodName != pod.Name })
 	}
 
 	// Check if the pod we're processing acts as a router, if so also populate network.Routers
@@ -207,22 +240,17 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork
 		// Pod is a router, ensure it's in the list
 		if !lo.ContainsBy(nw.Status.Routers, func(n nwApi.OverlayNetworkIPAllocation) bool { return n.PodName == pod.Name }) {
 			nw.Status.Routers = append(nw.Status.Routers, allocation)
-			changes = true
 		}
 	} else {
 		// Pod is no router, so remove from list
-		oldLen := len(nw.Status.Routers)
 		nw.Status.Routers = lo.Filter(nw.Status.Routers, func(n nwApi.OverlayNetworkIPAllocation, i int) bool { return n.PodName != pod.Name })
-		changes = changes || len(nw.Status.Routers) != oldLen
 	}
 
 	// Only update the network if it got changed
-	if changes {
-		if err := r.Status().Update(ctx, nw); err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "could not update network status", "network", nw.Name)
-				return err
-			}
+	if err := r.Status().Update(ctx, nw); err != nil {
+		if !errors.IsNotFound(err) {
+			logger.Error(err, "could not update network status", "network", nw.Name)
+			return err
 		}
 	}
 
@@ -233,22 +261,23 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork
 func (r *PodReconciler) deallocateIP(ctx context.Context, nw *nwApi.OverlayNetwork, pod *corev1.Pod, isRouter bool) error {
 	logger := log.FromContext(ctx)
 
-	nrAllocsBefore := len(nw.Status.Allocations)
-	nrRoutersBefore := len(nw.Status.Routers)
 	nw.Status.Allocations = lo.Filter(nw.Status.Allocations, func(item nwApi.OverlayNetworkIPAllocation, index int) bool {
 		return item.PodName != pod.Name
 	})
 	nw.Status.Routers = lo.Filter(nw.Status.Routers, func(item nwApi.OverlayNetworkIPAllocation, index int) bool {
 		return item.PodName != pod.Name
 	})
+	// Remove this pod from optional router networks
+	for rtName := range nw.Status.OptionalRouters {
+		nw.Status.OptionalRouters[rtName] = lo.Filter(nw.Status.OptionalRouters[rtName], func(n nwApi.OverlayNetworkIPAllocation, _ int) bool {
+			return n.PodName != pod.Name
+		})
+	}
 
-	// new allocs is less than before, so we deleted something
-	if len(nw.Status.Allocations) != nrAllocsBefore || len(nw.Status.Routers) != nrRoutersBefore {
-		if err := r.Status().Update(ctx, nw); err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "could not update network status", "network", nw.Name)
-				return err
-			}
+	if err := r.Status().Update(ctx, nw); err != nil {
+		if !errors.IsNotFound(err) {
+			logger.Error(err, "could not update network status", "network", nw.Name)
+			return err
 		}
 	}
 	return nil
