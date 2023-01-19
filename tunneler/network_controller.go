@@ -374,9 +374,22 @@ func (r *TunnelReconciler) reconcileRoutes(ctx context.Context, nw *nwApi.Overla
 
 		for i := range routes {
 			route := &routes[i]
-			if route.Scope == netlink.SCOPE_LINK && netEqual(route.Dst, allocNet) && route.Src.Equal(net.ParseIP(linkInfo.InTunnelLocalIP)) {
-				allocatableFound = true
-				continue
+			if !isRouter {
+				// for a peer pod, we want to add the entire allocatableCidr as route
+				if route.Scope == netlink.SCOPE_LINK && netEqual(route.Dst, allocNet) && route.Src.Equal(net.ParseIP(linkInfo.InTunnelLocalIP)) {
+					allocatableFound = true
+					continue
+				}
+			} else {
+				// for a router pod, consider the peer routes valid
+				remote := &net.IPNet{
+					IP:   net.ParseIP(linkInfo.InTunnelRemoteIP),
+					Mask: net.CIDRMask(32, 32),
+				}
+				if route.Scope == netlink.SCOPE_LINK && netEqual(route.Dst, remote) && route.Src.Equal(net.ParseIP(linkInfo.InTunnelLocalIP)) {
+					allocatableFound = true
+					continue
+				}
 			}
 
 			cidr, ok := lo.Find(targetRoutes, func(rt routeState) bool {
