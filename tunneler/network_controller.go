@@ -347,7 +347,7 @@ func (r *TunnelReconciler) reconcileRoutes(ctx context.Context, nw *nwApi.Overla
 		}
 
 		if !isRouter {
-			// These routes only exist for members
+			// These routes only exist for members, in the router pod we consider these being setup by another program
 			for _, cidr := range nw.Spec.RoutableCIDRs {
 				_, cidrObj, err := net.ParseCIDR(cidr)
 				if err != nil {
@@ -398,16 +398,32 @@ func (r *TunnelReconciler) reconcileRoutes(ctx context.Context, nw *nwApi.Overla
 
 		// The "owned" network route shall only be setup for non-router pods, since the router has these configures as
 		// scope "LOCAL"
-		if !allocatableFound && !isRouter {
-			logger.Info("adding owned route", "net", allocNet, "src", linkInfo.InTunnelLocalIP)
-			// Add "owned" network route
-			if err := netlink.RouteAdd(&netlink.Route{
-				LinkIndex: link.Attrs().Index,
-				Scope:     netlink.SCOPE_LINK,
-				Dst:       allocNet,
-				Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
-			}); err != nil {
-				return err
+		if !allocatableFound {
+			if !isRouter {
+				logger.Info("adding owned route", "net", allocNet, "src", linkInfo.InTunnelLocalIP)
+				// Add "owned" network route
+				if err := netlink.RouteAdd(&netlink.Route{
+					LinkIndex: link.Attrs().Index,
+					Scope:     netlink.SCOPE_LINK,
+					Dst:       allocNet,
+					Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
+				}); err != nil {
+					return err
+				}
+			} else {
+				cidr := &net.IPNet{
+					IP:   net.ParseIP(linkInfo.InTunnelRemoteIP),
+					Mask: net.CIDRMask(32, 32),
+				}
+				logger.Info("adding peer route", "net", cidr, "src", linkInfo.InTunnelLocalIP)
+				if err := netlink.RouteAdd(&netlink.Route{
+					LinkIndex: link.Attrs().Index,
+					Scope:     netlink.SCOPE_LINK,
+					Dst:       cidr,
+					Src:       net.ParseIP(linkInfo.InTunnelLocalIP),
+				}); err != nil {
+					return err
+				}
 			}
 		}
 
