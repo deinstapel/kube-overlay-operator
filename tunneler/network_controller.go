@@ -143,7 +143,7 @@ func (r *TunnelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	logger.Info("Reconciled network space", "ls", targetLinkState)
-	err := r.reconcileTunnelInterfaces(nw, targetLinkState, isRouter, extraRoutes)
+	err := r.reconcileTunnelInterfaces(ctx, nw, targetLinkState, isRouter, extraRoutes)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile network: %v", err)
 	}
@@ -183,7 +183,7 @@ func (r *TunnelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool, extraRoutes []routeState) error {
+func (r *TunnelReconciler) reconcileTunnelInterfaces(ctx context.Context, nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool, extraRoutes []routeState) error {
 
 	// Ensure the receiving side is setup properly
 	if err := r.reconcileFOU(nw, len(targetState) > 0); err != nil {
@@ -234,7 +234,7 @@ func (r *TunnelReconciler) reconcileTunnelInterfaces(nw *nwApi.OverlayNetwork, t
 	}
 
 	// at this point all links exist, and the allocatable-cidr-routes are setup properly.
-	if err := r.reconcileRoutes(nw, targetState, isRouter, extraRoutes); err != nil {
+	if err := r.reconcileRoutes(ctx, nw, targetState, isRouter, extraRoutes); err != nil {
 		return fmt.Errorf("error setting up routes for network member: %v", err)
 	}
 
@@ -326,7 +326,9 @@ func (r *TunnelReconciler) reconcileFOU(nw *nwApi.OverlayNetwork, shouldBePresen
 }
 
 // reconcileRoutes matches the currently deployed route for interfaces in a single overlay network to match extraCidrs
-func (r *TunnelReconciler) reconcileRoutes(nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool, targetRoutes []routeState) error {
+func (r *TunnelReconciler) reconcileRoutes(ctx context.Context, nw *nwApi.OverlayNetwork, targetState map[string]*LinkInfo, isRouter bool, targetRoutes []routeState) error {
+	logger := log.FromContext(ctx)
+
 	for linkName, linkInfo := range targetState {
 		link, err := netlink.LinkByName(linkName)
 		if err != nil {
@@ -364,6 +366,10 @@ func (r *TunnelReconciler) reconcileRoutes(nw *nwApi.OverlayNetwork, targetState
 			}
 		}
 
+		for idx, rt := range targetRoutes {
+			logger.Info("target route", "index", idx, "net", rt.net, "gw", rt.router)
+		}
+
 		processedCidrs := []routeState{}
 
 		for i := range routes {
@@ -379,6 +385,7 @@ func (r *TunnelReconciler) reconcileRoutes(nw *nwApi.OverlayNetwork, targetState
 				return gwValid && netValid
 			})
 			if !ok {
+				logger.Info("deleting route", "net", route.Dst, "gw", route.Gw)
 				// route should not be here
 				if err := netlink.RouteDel(route); err != nil {
 					return err
@@ -390,6 +397,8 @@ func (r *TunnelReconciler) reconcileRoutes(nw *nwApi.OverlayNetwork, targetState
 		}
 
 		if !allocatableFound {
+
+			logger.Info("adding owned route", "net", allocNet, "src", linkInfo.InTunnelLocalIP)
 			// Add "owned" network route
 			if err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: link.Attrs().Index,
@@ -406,6 +415,7 @@ func (r *TunnelReconciler) reconcileRoutes(nw *nwApi.OverlayNetwork, targetState
 				continue
 			}
 
+			logger.Info("adding route", "net", route.net, "gw", route.router, "src", linkInfo.InTunnelLocalIP)
 			// Add route
 			if err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: link.Attrs().Index,
