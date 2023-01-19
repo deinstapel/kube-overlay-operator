@@ -225,7 +225,7 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork
 
 	// Record this pod in the list of optional routers
 	for _, extraRouter := range extraRouters {
-		if lo.ContainsBy(nw.Status.OptionalRouters[extraRouter], func(a nwApi.OverlayNetworkIPAllocation) bool {
+		if !lo.ContainsBy(nw.Status.OptionalRouters[extraRouter], func(a nwApi.OverlayNetworkIPAllocation) bool {
 			return a.PodName == allocation.PodName
 		}) {
 			nw.Status.OptionalRouters[extraRouter] = append(nw.Status.OptionalRouters[extraRouter], allocation)
