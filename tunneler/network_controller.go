@@ -396,8 +396,9 @@ func (r *TunnelReconciler) reconcileRoutes(ctx context.Context, nw *nwApi.Overla
 			}
 		}
 
-		if !allocatableFound {
-
+		// The "owned" network route shall only be setup for non-router pods, since the router has these configures as
+		// scope "LOCAL"
+		if !allocatableFound && !isRouter {
 			logger.Info("adding owned route", "net", allocNet, "src", linkInfo.InTunnelLocalIP)
 			// Add "owned" network route
 			if err := netlink.RouteAdd(&netlink.Route{
