@@ -36,6 +36,9 @@ type OverlayNetworkSpec struct {
 
 	// OptionalRoutes is a list of cidrs that can be reached through another pod on the network that acts as router
 	OptionalRoutes []OverlayNetworkExtraRoute `json:"optionalRoutes,omitempty"`
+
+	// ServiceNames is a list of k8s services that are allowed to be resolved by the DNS integration
+	ServiceNames []string `json:"serviceNames,omitempty"`
 }
 
 // OverlayNetworkExtraRoute defines an additional cidr that needs to be opted in to be able to be reached

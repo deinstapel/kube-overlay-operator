@@ -18,6 +18,7 @@ COPY api/ api/
 COPY controllers/ controllers/
 COPY tunneler/ tunneler/
 COPY webhooks/ webhooks/
+COPY resolver/ resolver/
 COPY cmd/ cmd/
 
 # Build
@@ -41,6 +42,12 @@ COPY --from=builder /workspace/manager .
 ENTRYPOINT ["/manager"]
 
 FROM gcr.io/distroless/static:nonroot as webhook
+WORKDIR /
+COPY --from=builder /workspace/manager .
+USER 65532:65532
+ENTRYPOINT ["/manager"]
+
+FROM gcr.io/distroless/static:nonroot as dns
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532

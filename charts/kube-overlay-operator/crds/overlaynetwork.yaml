@@ -67,6 +67,12 @@ spec:
                 items:
                   type: string
                 type: array
+              serviceNames:
+                description: ServiceNames is a list of k8s services that are allowed
+                  to be resolved by the DNS integration
+                items:
+                  type: string
+                type: array
             type: object
           status:
             description: OverlayNetworkStatus defines the observed state of OverlayNetwork
