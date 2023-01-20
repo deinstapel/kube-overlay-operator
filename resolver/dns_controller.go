@@ -157,7 +157,7 @@ func (r *DNSReconciler) handleDnsRequest(w dns.ResponseWriter, q *dns.Msg) {
 
 func (r *DNSReconciler) ServeDNS(ctx context.Context) error {
 	dns.HandleFunc(r.zone, r.handleDnsRequest)
-	port := 5353
+	port := 53
 	server := &dns.Server{Addr: fmt.Sprintf(":%d", port), Net: "udp"}
 	if err := server.ListenAndServe(); err != nil {
 		return err
