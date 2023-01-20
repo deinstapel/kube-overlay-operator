@@ -18,6 +18,7 @@ COPY api/ api/
 COPY controllers/ controllers/
 COPY tunneler/ tunneler/
 COPY webhooks/ webhooks/
+COPY resolver/ resolver/
 COPY cmd/ cmd/
 
 # Build
