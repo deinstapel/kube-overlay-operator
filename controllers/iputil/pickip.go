@@ -8,12 +8,22 @@ import (
 // ErrAddressPoolExhausted is returned if no IP could be allocated
 var ErrAddressPoolExhausted = errors.New("address pool exhausted")
 
+// ErrDuplicateIPRequest is returned if the user requested an IP but it's already in use
+var ErrDuplicateIPRequest = errors.New("requested ip already in use")
+
 // FirstFreeHost returns the first unallocated IP address from the given cidr
-func FirstFreeHost(cidr string, allocated map[string]bool) (string, error) {
+func FirstFreeHost(cidr string, allocated map[string]bool, request net.IP) (string, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return "", err
 	}
+
+	if request != nil && !allocated[request.String()] {
+		return request.String(), nil
+	} else if request != nil {
+		return "", ErrDuplicateIPRequest
+	}
+
 	// Increment to skip "network address"...
 	// Leftovers from ancient times
 	inc(ip)

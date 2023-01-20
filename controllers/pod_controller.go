@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -42,6 +43,9 @@ const POD_NETWORK_ROUTER_ANNOTATION = "network.deinstapel.de/router-for"
 // Format is overlay/routeName
 const POD_NETWORK_EXTRA_ROUTER_ANNOTATION = "network.deinstapel.de/extra-router"
 const POD_NETWORK_EXTRA_ROUTE_ANNOTATION = "network.deinstapel.de/extra-routes"
+
+// Format is overlay/ip
+const POD_IP_ANNOTATION = "network.deinstapel.de/request-ip"
 
 const POD_FINALIZER = "network.deinstapel.de/ipam"
 const POD_OVERLAY_LABEL = "network.deinstapel.de/inject-sidecar"
@@ -198,13 +202,38 @@ func (r *PodReconciler) allocateIP(ctx context.Context, nw *nwApi.OverlayNetwork
 			allocationMap[alloc.IP] = true
 		}
 
-		// Retrieve IP address, handle pool exhausted errors
-		ipAlloc, err := iputil.FirstFreeHost(nw.Spec.AllocatableCIDR, allocationMap)
-		if err != nil && err != iputil.ErrAddressPoolExhausted {
+		var requestedIp net.IP = nil
+		if requestIp, ok := pod.ObjectMeta.Annotations[POD_IP_ANNOTATION]; ok {
+			nwPrefix := fmt.Sprintf("%s/", nw.Name)
+			requests := lo.Filter(strings.Split(requestIp, ","), func(i string, _ int) bool {
+				return strings.HasPrefix(i, nwPrefix)
+			})
+			if len(requests) > 0 {
+				ipString := strings.TrimPrefix(requests[0], nwPrefix)
+				requestedIp = net.ParseIP(ipString)
+			}
+		}
+		_, cidr, err := net.ParseCIDR(nw.Spec.AllocatableCIDR)
+		if err != nil {
 			logger.Error(err, "invalid CIDR for overlay network", "network", nw.Name)
+			return err
+		}
+		if requestedIp != nil && !cidr.Contains(requestedIp) {
+			err := fmt.Errorf("pod requested IP outside of allocatable CIDRs")
+			logger.Error(err, "invalid allocations", "network", nw.Name, "pod", pod.Name)
+			return err
+		}
+
+		// Retrieve IP address, handle pool exhausted errors
+		ipAlloc, err := iputil.FirstFreeHost(nw.Spec.AllocatableCIDR, allocationMap, requestedIp)
+		if err == iputil.ErrDuplicateIPRequest {
+			logger.Error(err, "duplicate IP request", "network", nw.Name, "pod", pod.Name)
 			return err
 		} else if err == iputil.ErrAddressPoolExhausted {
 			logger.Error(err, "network address pool exhaused", "network", nw.Name)
+			return err
+		} else if err != nil {
+			logger.Error(err, "invalid CIDR for overlay network", "network", nw.Name)
 			return err
 		}
 
