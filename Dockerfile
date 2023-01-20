@@ -46,4 +46,10 @@ COPY --from=builder /workspace/manager .
 USER 65532:65532
 ENTRYPOINT ["/manager"]
 
+FROM gcr.io/distroless/static:nonroot as dns
+WORKDIR /
+COPY --from=builder /workspace/manager .
+USER 65532:65532
+ENTRYPOINT ["/manager"]
+
 FROM ${TARGET}
