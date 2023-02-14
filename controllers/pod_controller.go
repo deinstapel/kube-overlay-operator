@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	goerrors "errors"
 
@@ -153,7 +152,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	// If any network of the pod had errors, reconcile later
 	if hasErrors || anyNetworkUnprocessed {
 		logger.Info("requeuing pod, had errors or unprocessed networks", "pod", pod.Name)
-		return ctrl.Result{RequeueAfter: 1 * time.Minute, Requeue: true}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 	return ctrl.Result{}, nil
 }
