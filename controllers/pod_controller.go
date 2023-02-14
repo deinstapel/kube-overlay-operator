@@ -99,24 +99,11 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	hasErrors := false
 
 	if pod.DeletionTimestamp != nil {
-		logger.Info(fmt.Sprintf("pod %v was deleted, waiting for containers to terminate", pod.Name))
-		terminationGracePeriod := int64(0)
-		if pod.Spec.TerminationGracePeriodSeconds != nil {
-			terminationGracePeriod = *pod.Spec.TerminationGracePeriodSeconds
-		}
 
-		maximumTime := pod.DeletionTimestamp.Add(time.Duration(terminationGracePeriod) * time.Second)
-
-		// If the terminationGracePeriod has expired or all containers are terminated, then do the finalizer.
-		if time.Now().After(maximumTime) || !lo.ContainsBy(pod.Status.ContainerStatuses, func(c corev1.ContainerStatus) bool { return c.Ready || (c.Started != nil && *c.Started) }) {
-			logger.Info(fmt.Sprintf("pod %v was terminated, deallocating IPs and removing finalizer", pod.Name))
-			// pod.DeletionTimestamp != nil means it was deleted
-			// phase != Running && phase != Unknown means it's either pending or succeeded or failed, which means all containers
-			// have exited, so we can safely free all IPs used by the pod
-			uniqueNetworks = make(map[string]bool)
-			routerNetworks = make(map[string]bool)
-			shouldRemoveFinalizer = true
-		}
+		logger.Info(fmt.Sprintf("pod %v was deleted, removing from networks", pod.Name))
+		uniqueNetworks = make(map[string]bool)
+		routerNetworks = make(map[string]bool)
+		shouldRemoveFinalizer = true
 	}
 
 	for i := range nwList.Items {
