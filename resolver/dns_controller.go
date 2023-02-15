@@ -120,7 +120,7 @@ func (r *DNSReconciler) processDnsRequest(name string, reply *dns.Msg, q *dns.Ms
 			continue
 		}
 		if target, ok := nw.ipCache[ip2int(v4)]; ok {
-			rr, err := dns.NewRR(fmt.Sprintf("%s A %s", name, target.String()))
+			rr, err := dns.NewRR(fmt.Sprintf("%s 60 A %s", name, target.String()))
 			if err != nil {
 				continue
 			}
