@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -65,6 +66,16 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	if len(sa.Secrets) == 0 {
+		// We're running on k8s >- 1.24, so no secrets are created automatically.
+
+		if err := r.reconcileSecret(ctx, sa); err != nil {
+			if !errors.IsAlreadyExists(err) {
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
 	role := &rbacv1.RoleBinding{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: req.Name, Name: OVELRAY_NETWORK_SERVICE_ACCOUNT}, role); err != nil {
 		if !errors.IsNotFound(err) {
@@ -87,6 +98,28 @@ func (r *NamespaceReconciler) reconcileServiceAccount(ctx context.Context, ns st
 	sa.Namespace = ns
 	sa.Name = OVELRAY_NETWORK_SERVICE_ACCOUNT
 	return r.Client.Create(ctx, sa)
+}
+
+func (r *NamespaceReconciler) reconcileSecret(ctx context.Context, sa *corev1.ServiceAccount) error {
+	secret := &corev1.Secret{}
+	secretName := fmt.Sprintf("%s-token", sa.Name)
+	if err := r.Get(ctx, client.ObjectKey{Namespace: sa.Namespace, Name: secretName}, secret); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		secret.Namespace = sa.Namespace
+		secret.Name = secretName
+		secret.Type = "kubernetes.io/service-account-token"
+		secret.Annotations = map[string]string{
+			"kubernetes.io/service-account.name": sa.Name,
+		}
+		if err := r.Client.Create(ctx, secret); err != nil {
+			if !errors.IsAlreadyExists(err) {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (r *NamespaceReconciler) reconcileRole(ctx context.Context, ns string) error {

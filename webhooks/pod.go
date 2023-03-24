@@ -46,8 +46,12 @@ func (a *PodInjector) Handle(ctx context.Context, req admission.Request) admissi
 		return admission.Errored(http.StatusPreconditionFailed, fmt.Errorf("sidecar service account retrieval error: %v", err))
 	}
 	if len(sa.Secrets) == 0 {
-		logger.Error(fmt.Errorf("serviceaccount has no secrets"), "serviceaccount has no secrets", "ns", pod.Namespace)
-		return admission.Errored(http.StatusPreconditionFailed, fmt.Errorf("sidecar service account does not have a token"))
+		// We're running in k8s 1.24, so assume we have a secret generated
+		sa.Secrets = append(sa.Secrets, corev1.ObjectReference{
+			Kind:      "Secret",
+			Namespace: sa.Namespace,
+			Name:      fmt.Sprintf("%s-token", sa.Name),
+		})
 	}
 
 	if lo.ContainsBy(pod.Spec.Containers, func(c corev1.Container) bool {
