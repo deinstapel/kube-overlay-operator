@@ -194,6 +194,7 @@ rules:
   - ""
   resources:
   - serviceaccounts
+  - secrets
   verbs:
   - create
   - get
